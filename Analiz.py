@@ -130,7 +130,7 @@ if file:
     with col_set:
         st.subheader("🛠️ Panel")
         pos_group = st.selectbox("Pozisyon Seçimi", ["DEF", "MID", "FWD", "GK"])
-        selected_players = st.multiselect("Oyuncuları Kıyasla", df["Player"].unique(), max_selections=3)
+        selected_players = st.multiselect("Oyuncuları Kıyasla", df["Player"].unique(), max_selections=20)
         metrics = [m for m in benchmarks[pos_group].keys() if column_map[m] in df.columns]
 
         st.write("---")

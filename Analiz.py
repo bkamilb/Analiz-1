@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 
-# --- 1. REHBERDEKİ TAM VERİ SETİ (PDF UYUMLU) ---
+# --- 1. VERİ SETİ ---
 benchmarks = {
     "GK": {
         "Goals Conceded": [1.57, 1.45, 1.31, 1.20], "xG Prevented": [-0.16, -0.12, -0.07, -0.02],
@@ -54,7 +54,6 @@ column_map = {
     "Goals": "Goals per 90 minutes"
 }
 
-# --- 2. VERİ TEMİZLEME VE NORMALİZASYON ---
 def clean_val(val):
     try:
         if isinstance(val, str): val = val.replace('%','').replace(',','.').strip()
@@ -64,82 +63,119 @@ def clean_val(val):
 def get_norm(val, thresh, rev=False):
     v = clean_val(val)
     l, m, g, e = thresh
-    # Luis Diaz örneğindeki gibi değerin grafiğe yansıması için 
-    # değer eşiklerin çok altındaysa bile minimum bir görünürlük sağlıyoruz.
     if rev:
         if v >= l: return 10
         if v <= e: return 100
         return 10 + (l - v) / (l - e) * 90
     else:
-        if v <= l: return (v / l) * 25 if l > 0 else 0
+        if v <= l: return (v / l) * 25 if l > 0 else 5
         if v >= e: return 100
-        # 25:Zayıf, 50:Ortalama, 75:İyi, 100:Elit skalası
         return 25 + (v - l) / (e - l) * 75
 
-# --- 3. RADAR CHART FONKSİYONU ---
-def draw_radar(players_data, metrics, pos_group):
+# --- 2. RADAR TASARIMI (TEMİZ) ---
+def draw_radar_pro(players_data, metrics, pos_group):
     N = len(metrics)
     angles = np.linspace(0, 2*np.pi, N, endpoint=False).tolist()
     angles += angles[:1]
     
-    fig, ax = plt.subplots(figsize=(11, 11), subplot_kw=dict(polar=True))
-    
-    # ARKA PLAN HALKALARI (Daha temiz görüntü için)
-    # 0-25: Zayıf (Kırmızı), 25-50: Orta (Turuncu), 50-75: İyi (Yeşil), 75-100: Elit (Mavi)
-    colors = ["#ff9999", "#ffcc99", "#99ff99", "#99ccff"]
-    radii = [25, 50, 75, 100]
-    for r, c in zip(reversed(radii), reversed(colors)):
-        circle = plt.Circle((0, 0), r, transform=ax.transData._b, color=c, alpha=0.3)
-        ax.add_artist(circle)
+    plt.style.use('dark_background')
+    fig, ax = plt.subplots(figsize=(10, 10), subplot_kw=dict(polar=True))
+    fig.patch.set_facecolor('#0E1117')
+    ax.set_facecolor('#0E1117')
 
-    # OYUNCU ÇİZGİLERİ
-    line_colors = ["#222222", "#FF0000", "#0000FF"]
+    # RENK HALKALARI
+    levels = [(25, "#8B0000"), (50, "#B8860B"), (75, "#006400"), (100, "#00008B")]
+    for top, color in reversed(levels):
+        ax.fill(angles, [top]*(N+1), color=color, alpha=0.5, zorder=0)
+
+    # OYUNCULAR
+    line_colors = ["#00FFFF", "#FF00FF", "#ADFF2F"]
     for i, (name, values) in enumerate(players_data.items()):
         vals = values.tolist()
         vals += vals[:1]
-        ax.plot(angles, vals, color=line_colors[i % 3], linewidth=3, label=name, marker='o', markersize=6)
+        color = line_colors[i % len(line_colors)]
+        ax.plot(angles, vals, color=color, linewidth=4, label=name, marker='o', markersize=7, markeredgecolor='white', zorder=5)
+        ax.fill(angles, vals, color=color, alpha=0.1)
 
-    # EKSEN ETİKETLERİ VE ELİTE DEĞERLER (Uçlardaki rakamlar)
     ax.set_xticks(angles[:-1])
-    labels = []
-    for m in metrics:
-        elite_val = benchmarks[pos_group][m][3] # Elite eşiği (en dış rakam)
-        labels.append(f"{m}\n({elite_val})")
+    labels = [f"{m}\n({benchmarks[pos_group][m][3]})" for m in metrics]
+    ax.set_xticklabels(labels, fontsize=10, fontweight='bold', color="#E0E0E0")
     
-    ax.set_xticklabels(labels, fontsize=9, fontweight='bold')
     ax.set_ylim(0, 100)
-    ax.set_yticklabels([]) # İçerideki 0-100 rakamlarını gizle
-    
-    plt.legend(loc='upper right', bbox_to_anchor=(1.2, 1.1))
-    st.pyplot(fig)
+    ax.set_yticklabels([]) 
+    ax.grid(color="#444444", linestyle="--", alpha=0.5)
 
-# --- 4. STREAMLIT UI ---
-st.set_page_config(layout="wide")
-st.title("🏹 MustermannFM Stili Gelişmiş Radar")
+    plt.legend(loc='upper right', bbox_to_anchor=(1.25, 1.1), fontsize=10, facecolor='#1E1E1E', edgecolor='white')
+    return fig
 
-file = st.file_uploader("FM CSV Yükle", type="csv")
+# --- 3. STREAMLIT UI ---
+st.set_page_config(layout="wide", page_title="FM26 Scout Pro")
+
+st.markdown("""
+    <style>
+    .level-box { padding: 8px; border-radius: 4px; margin-bottom: 4px; font-weight: bold; text-align: center; font-size: 0.9em; }
+    .main { background-color: #0E1117; color: white; }
+    </style>
+    """, unsafe_allow_html=True)
+
+st.title("🔬 FM26 Profesyonel Scout Analiz Raporu")
+
+file = st.file_uploader("FM Veri Dosyasını Yükle (CSV)", type="csv")
+
 if file:
     df = pd.read_csv(file, sep=";")
-    pos_group = st.sidebar.selectbox("Kıyaslama Pozisyonu", ["DEF", "MID", "FWD", "GK"])
     
-    # Rehberdeki metrikleri çek
-    metrics = [m for m in benchmarks[pos_group].keys() if column_map[m] in df.columns]
+    col_set, col_plot, col_val = st.columns([1, 2.2, 1.5])
     
-    selected_players = st.sidebar.multiselect("Oyuncular", df["Player"].unique(), max_selections=3)
-    
-    if selected_players:
-        plot_data = {}
-        for p in selected_players:
-            row = df[df["Player"] == p].iloc[0]
-            # Normalizasyon ve eksik veri kontrolü
-            vals = []
+    with col_set:
+        st.subheader("🛠️ Panel")
+        pos_group = st.selectbox("Pozisyon Seçimi", ["DEF", "MID", "FWD", "GK"])
+        selected_players = st.multiselect("Oyuncuları Kıyasla", df["Player"].unique(), max_selections=3)
+        metrics = [m for m in benchmarks[pos_group].keys() if column_map[m] in df.columns]
+
+        st.write("---")
+        st.subheader("🎨 Renk Kılavuzu")
+        st.markdown('<div class="level-box" style="background-color: #00008B; color: white;">ELİT</div>', unsafe_allow_html=True)
+        st.markdown('<div class="level-box" style="background-color: #006400; color: white;">İYİ</div>', unsafe_allow_html=True)
+        st.markdown('<div class="level-box" style="background-color: #B8860B; color: white;">ORTALAMA</div>', unsafe_allow_html=True)
+        st.markdown('<div class="level-box" style="background-color: #8B0000; color: white;">ZAYIF</div>', unsafe_allow_html=True)
+
+    with col_plot:
+        if selected_players:
+            plot_data = {}
+            for p in selected_players:
+                row = df[df["Player"] == p].iloc[0]
+                norm_vals = [get_norm(row[column_map[m]], benchmarks[pos_group][m], m in ["Goals Conceded", "Possession Lost"]) for m in metrics]
+                plot_data[p] = pd.Series(norm_vals)
+            
+            fig = draw_radar_pro(plot_data, metrics, pos_group)
+            st.pyplot(fig)
+        else:
+            st.info("Lütfen sol panelden oyuncu seçin.")
+
+    with col_val:
+        if selected_players:
+            # TABLO 1: OYUNCU İSTATİSTİKLERİ
+            st.subheader("📊 Oyuncu İstatistikleri")
+            stats_data = []
             for m in metrics:
-                norm_v = get_norm(row[column_map[m]], benchmarks[pos_group][m], m in ["Goals Conceded", "Possession Lost"])
-                vals.append(norm_v)
-            plot_data[p] = pd.Series(vals)
-        
-        draw_radar(plot_data, metrics, pos_group)
-        
-        # Seçili oyuncuların ham verilerini tablo olarak bas (Kontrol için)
-        st.write("### Seçili Oyuncuların Ham İstatistikleri")
-        st.table(df[df["Player"].isin(selected_players)][["Player"] + [column_map[m] for m in metrics]])
+                row_dict = {"Metrik": m}
+                for p in selected_players:
+                    val = clean_val(df[df["Player"] == p].iloc[0][column_map[m]])
+                    row_dict[p] = val
+                stats_data.append(row_dict)
+            st.dataframe(pd.DataFrame(stats_data).set_index("Metrik"), use_container_width=True)
+
+            # TABLO 2: EŞİK DEĞERLERİ (SENİN İSTEDİĞİN FORMAT)
+            st.subheader("🎯 Eşik Değerleri (Referans)")
+            ref_data = []
+            for m in metrics:
+                thresh = benchmarks[pos_group][m]
+                ref_data.append({
+                    "Metrik": m,
+                    "Zayıf": thresh[0],
+                    "Ortalama": thresh[1],
+                    "İyi": thresh[2],
+                    "Elit": thresh[3]
+                })
+            st.dataframe(pd.DataFrame(ref_data).set_index("Metrik"), use_container_width=True)

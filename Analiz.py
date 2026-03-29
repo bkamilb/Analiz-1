@@ -3,7 +3,8 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 
-# --- 1. VERİ SETİ ---
+# --- 1. VERİ SETİ VE KONFİGÜRASYONLAR ---
+# FM24 stili benchmarks ve column_map (Değişmedi)
 benchmarks = {
     "GK": {
         "Goals Conceded": [1.57, 1.45, 1.31, 1.20], "xG Prevented": [-0.16, -0.12, -0.07, -0.02],
@@ -54,6 +55,7 @@ column_map = {
     "Goals": "Goals per 90 minutes"
 }
 
+# --- YARDIMCI FONKSİYONLAR ---
 def clean_val(val):
     try:
         if pd.isna(val): return 0.0
@@ -79,6 +81,8 @@ def get_color_style(val, metric, pos_group):
     thresh = benchmarks[pos_group].get(metric)
     if not thresh: return ""
     
+    # Eşik değerlerin azalan mı yoksa artan mı olduğunu kontrol et
+    # Örn: Possession Lost [12.01, 8.18, 4.90, 4.05] (is_reverse = True)
     is_reverse = thresh[0] > thresh[-1] 
     
     if is_reverse:
@@ -99,7 +103,7 @@ def style_stats_dataframe(df_to_style, pos_group):
             styles.at[metric, player] = get_color_style(df_to_style.at[metric, player], metric, pos_group)
     return styles
 
-# --- 2. PLOTLY İNTERAKTİF RADAR TASARIMI (MODERN) ---
+# --- 2. PLOTLY İNTERAKTİF RADAR TASARIMI (MODERN VE FM24 SİTİLİ) ---
 def draw_radar_pro(players_data, metrics, pos_group):
     fig = go.Figure()
     
@@ -107,7 +111,7 @@ def draw_radar_pro(players_data, metrics, pos_group):
     theta_labels = [f"{m}<br>({benchmarks[pos_group][m][3]})" for m in metrics]
     theta_ext = theta_labels + [theta_labels[0]]
     
-    # Saydam Arka Plan Halkaları
+    # FM24 Stili Arka Plan Renk Halkaları (Neon Transparan)
     bg_levels = [
         (100, "rgba(0, 0, 139, 0.25)", "Elit Bölge"),     # Mavi
         (75, "rgba(0, 100, 0, 0.3)", "İyi Bölge"),        # Yeşil
@@ -145,9 +149,11 @@ def draw_radar_pro(players_data, metrics, pos_group):
             line=dict(color=color, width=3),
             marker=dict(color=color, size=7, line=dict(color='white', width=1)),
             name=name,
+            # FM stili interaktif hover bilgisi
             hovertemplate="<b>%{theta}</b><br>Normalleştirilmiş Skor: %{r:.1f}<extra></extra>"
         ))
 
+    # FM Stili Koyu Tema ve Neon Aksanlar
     fig.update_layout(
         polar=dict(
             bgcolor='#0E1117',
@@ -179,9 +185,10 @@ def draw_radar_pro(players_data, metrics, pos_group):
     )
     return fig
 
-# --- 3. STREAMLIT UI ---
+# --- 3. STREAMLIT UI (DEĞİŞMEDİ) ---
 st.set_page_config(layout="wide", page_title="FM26 Scout Pro")
 
+# FM stili Kutu CSS'i
 st.markdown("""
     <style>
     .level-box { padding: 8px; border-radius: 4px; margin-bottom: 4px; font-weight: bold; text-align: center; font-size: 0.9em; }
@@ -212,7 +219,7 @@ if file:
     if selected_players:
         num_players = len(selected_players)
         
-        # Sınırlandırılmış dinamik sütun oranları
+        # Sınırlandırılmış dinamik sütun oranları (Negatif değer veya layout bozulmasını engeller)
         plot_weight = max(1.0, 3.0 - (num_players * 0.05)) 
         table_weight = max(2.0, 1.0 + (num_players * 0.3)) 
         
@@ -225,7 +232,7 @@ if file:
                 norm_vals = [get_norm(row.get(column_map[m], 0), benchmarks[pos_group][m], m in ["Goals Conceded", "Possession Lost"]) for m in metrics]
                 plot_data[p] = pd.Series(norm_vals)
             
-            # Plotly Chart'ı render ediyoruz
+            # Matplotlib yerine Plotly Chart'ı render ediyoruz
             fig = draw_radar_pro(plot_data, metrics, pos_group)
             st.plotly_chart(fig, use_container_width=True)
 
@@ -239,10 +246,14 @@ if file:
                     row_dict[p] = val
                 stats_data.append(row_dict)
             
+            # DataFrame'i oluştur, metriği index yap ve stili uygula
             stat_df = pd.DataFrame(stats_data).set_index("Metrik")
             styled_stat_df = stat_df.style.apply(lambda x: style_stats_dataframe(stat_df, pos_group), axis=None).format("{:.2f}")
             
+            # (Satır sayısı + 1 başlık) * satır yüksekliği (~36px) = Kusursuz dikey yükseklik
             dynamic_height = int((len(metrics) + 1) * 36)
+            
+            # Gelişmiş tabloyu render et
             st.dataframe(styled_stat_df, use_container_width=True, height=dynamic_height)
 
     else:

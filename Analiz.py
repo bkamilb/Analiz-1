@@ -56,6 +56,7 @@ column_map = {
 
 def clean_val(val):
     try:
+        if pd.isna(val): return 0.0
         if isinstance(val, str): val = val.replace('%','').replace(',','.').strip()
         return float(val) if val != "-" and val != "" else 0.0
     except: return 0.0
@@ -71,6 +72,32 @@ def get_norm(val, thresh, rev=False):
         if v <= l: return (v / l) * 25 if l > 0 else 5
         if v >= e: return 100
         return 25 + (v - l) / (e - l) * 75
+
+# --- TABLO RENKLENDİRME FONKSİYONLARI ---
+def get_color_style(val, metric, pos_group):
+    v = clean_val(val)
+    thresh = benchmarks[pos_group].get(metric)
+    if not thresh: return ""
+    
+    is_reverse = thresh[0] > thresh[-1] 
+    
+    if is_reverse:
+        if v <= thresh[3]: return "background-color: #00008B; color: white; font-weight: bold;" # Elit
+        if v <= thresh[2]: return "background-color: #006400; color: white; font-weight: bold;" # İyi
+        if v <= thresh[1]: return "background-color: #B8860B; color: white; font-weight: bold;" # Ortalama
+        return "background-color: #8B0000; color: white; font-weight: bold;" # Zayıf
+    else:
+        if v >= thresh[3]: return "background-color: #00008B; color: white; font-weight: bold;" # Elit
+        if v >= thresh[2]: return "background-color: #006400; color: white; font-weight: bold;" # İyi
+        if v >= thresh[1]: return "background-color: #B8860B; color: white; font-weight: bold;" # Ortalama
+        return "background-color: #8B0000; color: white; font-weight: bold;" # Zayıf
+
+def style_stats_dataframe(df_to_style, pos_group):
+    styles = pd.DataFrame('', index=df_to_style.index, columns=df_to_style.columns)
+    for metric in df_to_style.index:
+        for player in df_to_style.columns:
+            styles.at[metric, player] = get_color_style(df_to_style.at[metric, player], metric, pos_group)
+    return styles
 
 # --- 2. RADAR TASARIMI (TEMİZ) ---
 def draw_radar_pro(players_data, metrics, pos_group):
@@ -88,14 +115,14 @@ def draw_radar_pro(players_data, metrics, pos_group):
     for top, color in reversed(levels):
         ax.fill(angles, [top]*(N+1), color=color, alpha=0.5, zorder=0)
 
-    # OYUNCULAR
-    line_colors = ["#00FFFF", "#FF00FF", "#ADFF2F"]
+    # OYUNCULAR (Renk havuzu 30 seçime yetecek kadar çeşitli olmalı, aksi halde renkler kendini tekrar eder)
+    line_colors = ["#00FFFF", "#FF00FF", "#ADFF2F", "#FFA500", "#FFD700", "#00FA9A", "#1E90FF", "#FF69B4", "#CD5C5C", "#8A2BE2"]
     for i, (name, values) in enumerate(players_data.items()):
         vals = values.tolist()
         vals += vals[:1]
         color = line_colors[i % len(line_colors)]
-        ax.plot(angles, vals, color=color, linewidth=4, label=name, marker='o', markersize=7, markeredgecolor='white', zorder=5)
-        ax.fill(angles, vals, color=color, alpha=0.1)
+        ax.plot(angles, vals, color=color, linewidth=2, label=name, marker='o', markersize=5, markeredgecolor='white', zorder=5)
+        ax.fill(angles, vals, color=color, alpha=0.05) # Çok kişi seçildiğinde grafiğin kapanmaması için alpha değeri düşürüldü
 
     ax.set_xticks(angles[:-1])
     labels = [f"{m}\n({benchmarks[pos_group][m][3]})" for m in metrics]
@@ -105,7 +132,8 @@ def draw_radar_pro(players_data, metrics, pos_group):
     ax.set_yticklabels([]) 
     ax.grid(color="#444444", linestyle="--", alpha=0.5)
 
-    plt.legend(loc='upper right', bbox_to_anchor=(1.25, 1.1), fontsize=10, facecolor='#1E1E1E', edgecolor='white')
+    # Çok oyunculu durumlarda legend'ın grafiği kapatmaması için düzenleme
+    plt.legend(loc='upper right', bbox_to_anchor=(1.35, 1.1), fontsize=8, facecolor='#1E1E1E', edgecolor='white')
     return fig
 
 # --- 3. STREAMLIT UI ---
@@ -125,57 +153,54 @@ file = st.file_uploader("FM Veri Dosyasını Yükle (CSV)", type="csv")
 if file:
     df = pd.read_csv(file, sep=";")
     
-    col_set, col_plot, col_val = st.columns([1, 2.2, 1.5])
-    
-    with col_set:
-        st.subheader("🛠️ Panel")
-        pos_group = st.selectbox("Pozisyon Seçimi", ["DEF", "MID", "FWD", "GK"])
-        selected_players = st.multiselect("Oyuncuları Kıyasla", df["Player"].unique(), max_selections=20)
-        metrics = [m for m in benchmarks[pos_group].keys() if column_map[m] in df.columns]
+    # KONTROL PANELİ
+    st.sidebar.subheader("🛠️ Panel")
+    pos_group = st.sidebar.selectbox("Pozisyon Seçimi", ["DEF", "MID", "FWD", "GK"])
+    selected_players = st.sidebar.multiselect("Oyuncuları Kıyasla", df["Player"].unique(), max_selections=30)
+    metrics = [m for m in benchmarks[pos_group].keys() if column_map[m] in df.columns]
 
-        st.write("---")
-        st.subheader("🎨 Renk Kılavuzu")
-        st.markdown('<div class="level-box" style="background-color: #00008B; color: white;">ELİT</div>', unsafe_allow_html=True)
-        st.markdown('<div class="level-box" style="background-color: #006400; color: white;">İYİ</div>', unsafe_allow_html=True)
-        st.markdown('<div class="level-box" style="background-color: #B8860B; color: white;">ORTALAMA</div>', unsafe_allow_html=True)
-        st.markdown('<div class="level-box" style="background-color: #8B0000; color: white;">ZAYIF</div>', unsafe_allow_html=True)
+    st.sidebar.write("---")
+    st.sidebar.subheader("🎨 Renk Kılavuzu")
+    st.sidebar.markdown('<div class="level-box" style="background-color: #00008B; color: white;">ELİT</div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="level-box" style="background-color: #006400; color: white;">İYİ</div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="level-box" style="background-color: #B8860B; color: white;">ORTALAMA</div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="level-box" style="background-color: #8B0000; color: white;">ZAYIF</div>', unsafe_allow_html=True)
 
-    with col_plot:
-        if selected_players:
+    if selected_players:
+        num_players = len(selected_players)
+        
+        # Sınırlandırılmış dinamik sütun oranları (Negatif değer veya layout bozulmasını engeller)
+        plot_weight = max(1.0, 3.0 - (num_players * 0.05)) 
+        table_weight = max(2.0, 1.0 + (num_players * 0.3)) 
+        
+        col_plot, col_val = st.columns([plot_weight, table_weight])
+        
+        with col_plot:
             plot_data = {}
             for p in selected_players:
                 row = df[df["Player"] == p].iloc[0]
-                norm_vals = [get_norm(row[column_map[m]], benchmarks[pos_group][m], m in ["Goals Conceded", "Possession Lost"]) for m in metrics]
+                norm_vals = [get_norm(row.get(column_map[m], 0), benchmarks[pos_group][m], m in ["Goals Conceded", "Possession Lost"]) for m in metrics]
                 plot_data[p] = pd.Series(norm_vals)
             
             fig = draw_radar_pro(plot_data, metrics, pos_group)
             st.pyplot(fig)
-        else:
-            st.info("Lütfen sol panelden oyuncu seçin.")
 
-    with col_val:
-        if selected_players:
-            # TABLO 1: OYUNCU İSTATİSTİKLERİ
+        with col_val:
             st.subheader("📊 Oyuncu İstatistikleri")
             stats_data = []
             for m in metrics:
                 row_dict = {"Metrik": m}
                 for p in selected_players:
-                    val = clean_val(df[df["Player"] == p].iloc[0][column_map[m]])
+                    val = clean_val(df[df["Player"] == p].iloc[0].get(column_map[m], 0))
                     row_dict[p] = val
                 stats_data.append(row_dict)
-            st.dataframe(pd.DataFrame(stats_data).set_index("Metrik"), use_container_width=True)
+            
+            stat_df = pd.DataFrame(stats_data).set_index("Metrik")
+            styled_stat_df = stat_df.style.apply(lambda x: style_stats_dataframe(stat_df, pos_group), axis=None).format("{:.2f}")
+            
+            dynamic_height = int((len(metrics) + 1) * 36)
+            
+            st.dataframe(styled_stat_df, use_container_width=True, height=dynamic_height)
 
-            # TABLO 2: EŞİK DEĞERLERİ (SENİN İSTEDİĞİN FORMAT)
-            st.subheader("🎯 Eşik Değerleri (Referans)")
-            ref_data = []
-            for m in metrics:
-                thresh = benchmarks[pos_group][m]
-                ref_data.append({
-                    "Metrik": m,
-                    "Zayıf": thresh[0],
-                    "Ortalama": thresh[1],
-                    "İyi": thresh[2],
-                    "Elit": thresh[3]
-                })
-            st.dataframe(pd.DataFrame(ref_data).set_index("Metrik"), use_container_width=True)
+    else:
+        st.info("Lütfen sol panelden en az 1 oyuncu seçin.")

@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
 import numpy as np
+import plotly.graph_objects as go
 
 # --- 1. VERİ SETİ ---
 benchmarks = {
@@ -99,41 +99,84 @@ def style_stats_dataframe(df_to_style, pos_group):
             styles.at[metric, player] = get_color_style(df_to_style.at[metric, player], metric, pos_group)
     return styles
 
-# --- 2. RADAR TASARIMI (TEMİZ) ---
+# --- 2. PLOTLY İNTERAKTİF RADAR TASARIMI (MODERN) ---
 def draw_radar_pro(players_data, metrics, pos_group):
-    N = len(metrics)
-    angles = np.linspace(0, 2*np.pi, N, endpoint=False).tolist()
-    angles += angles[:1]
+    fig = go.Figure()
     
-    plt.style.use('dark_background')
-    fig, ax = plt.subplots(figsize=(10, 10), subplot_kw=dict(polar=True))
-    fig.patch.set_facecolor('#0E1117')
-    ax.set_facecolor('#0E1117')
+    # Plotly'de poligonun kapanması için ilk öğeyi sona eklememiz gerekir.
+    theta_labels = [f"{m}<br>({benchmarks[pos_group][m][3]})" for m in metrics]
+    theta_ext = theta_labels + [theta_labels[0]]
+    
+    # Saydam Arka Plan Halkaları
+    bg_levels = [
+        (100, "rgba(0, 0, 139, 0.25)", "Elit Bölge"),     # Mavi
+        (75, "rgba(0, 100, 0, 0.3)", "İyi Bölge"),        # Yeşil
+        (50, "rgba(184, 134, 11, 0.35)", "Ortalama"),     # Hardal
+        (25, "rgba(139, 0, 0, 0.4)", "Zayıf Bölge")       # Kırmızı
+    ]
+    
+    for val, color, name in bg_levels:
+        fig.add_trace(go.Scatterpolar(
+            r=[val] * len(theta_ext),
+            theta=theta_ext,
+            fill='toself',
+            fillcolor=color,
+            line=dict(color='rgba(255,255,255,0)'), # Çizgisiz
+            name=name,
+            hoverinfo='skip',
+            showlegend=False
+        ))
 
-    # RENK HALKALARI
-    levels = [(25, "#8B0000"), (50, "#B8860B"), (75, "#006400"), (100, "#00008B")]
-    for top, color in reversed(levels):
-        ax.fill(angles, [top]*(N+1), color=color, alpha=0.5, zorder=0)
-
-    # OYUNCULAR (Renk havuzu 30 seçime yetecek kadar çeşitli olmalı, aksi halde renkler kendini tekrar eder)
-    line_colors = ["#00FFFF", "#FF00FF", "#ADFF2F", "#FFA500", "#FFD700", "#00FA9A", "#1E90FF", "#FF69B4", "#CD5C5C", "#8A2BE2"]
+    # Geniş renk havuzu (30 oyuncuya kadar belirgin kalır)
+    line_colors = [
+        "#00FFFF", "#FF00FF", "#ADFF2F", "#FFA500", "#FFD700", 
+        "#00FA9A", "#1E90FF", "#FF69B4", "#CD5C5C", "#8A2BE2",
+        "#00BFFF", "#32CD32", "#FF4500", "#DA70D6", "#F0E68C"
+    ]
+    
     for i, (name, values) in enumerate(players_data.items()):
-        vals = values.tolist()
-        vals += vals[:1]
+        r_vals = values.tolist() + [values.tolist()[0]]
         color = line_colors[i % len(line_colors)]
-        ax.plot(angles, vals, color=color, linewidth=2, label=name, marker='o', markersize=5, markeredgecolor='white', zorder=5)
-        ax.fill(angles, vals, color=color, alpha=0.05) # Çok kişi seçildiğinde grafiğin kapanmaması için alpha değeri düşürüldü
+        
+        fig.add_trace(go.Scatterpolar(
+            r=r_vals,
+            theta=theta_ext,
+            fill='none', 
+            line=dict(color=color, width=3),
+            marker=dict(color=color, size=7, line=dict(color='white', width=1)),
+            name=name,
+            hovertemplate="<b>%{theta}</b><br>Normalleştirilmiş Skor: %{r:.1f}<extra></extra>"
+        ))
 
-    ax.set_xticks(angles[:-1])
-    labels = [f"{m}\n({benchmarks[pos_group][m][3]})" for m in metrics]
-    ax.set_xticklabels(labels, fontsize=10, fontweight='bold', color="#E0E0E0")
-    
-    ax.set_ylim(0, 100)
-    ax.set_yticklabels([]) 
-    ax.grid(color="#444444", linestyle="--", alpha=0.5)
-
-    # Çok oyunculu durumlarda legend'ın grafiği kapatmaması için düzenleme
-    plt.legend(loc='upper right', bbox_to_anchor=(1.35, 1.1), fontsize=8, facecolor='#1E1E1E', edgecolor='white')
+    fig.update_layout(
+        polar=dict(
+            bgcolor='#0E1117',
+            radialaxis=dict(
+                visible=True,
+                range=[0, 100],
+                showticklabels=False, # Sayısal değerleri gizledik ki sade dursun
+                gridcolor='rgba(255, 255, 255, 0.2)',
+                gridwidth=1
+            ),
+            angularaxis=dict(
+                gridcolor='rgba(255, 255, 255, 0.2)',
+                linecolor='rgba(255, 255, 255, 0.2)',
+                tickfont=dict(size=12, color="#E0E0E0", family="Arial")
+            )
+        ),
+        paper_bgcolor='#0E1117',
+        plot_bgcolor='#0E1117',
+        margin=dict(l=60, r=60, t=60, b=60),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.05,
+            xanchor="center",
+            x=0.5,
+            font=dict(color="white", size=11),
+            bgcolor="rgba(0,0,0,0)"
+        )
+    )
     return fig
 
 # --- 3. STREAMLIT UI ---
@@ -169,7 +212,7 @@ if file:
     if selected_players:
         num_players = len(selected_players)
         
-        # Sınırlandırılmış dinamik sütun oranları (Negatif değer veya layout bozulmasını engeller)
+        # Sınırlandırılmış dinamik sütun oranları
         plot_weight = max(1.0, 3.0 - (num_players * 0.05)) 
         table_weight = max(2.0, 1.0 + (num_players * 0.3)) 
         
@@ -182,8 +225,9 @@ if file:
                 norm_vals = [get_norm(row.get(column_map[m], 0), benchmarks[pos_group][m], m in ["Goals Conceded", "Possession Lost"]) for m in metrics]
                 plot_data[p] = pd.Series(norm_vals)
             
+            # Plotly Chart'ı render ediyoruz
             fig = draw_radar_pro(plot_data, metrics, pos_group)
-            st.pyplot(fig)
+            st.plotly_chart(fig, use_container_width=True)
 
         with col_val:
             st.subheader("📊 Oyuncu İstatistikleri")
@@ -199,7 +243,6 @@ if file:
             styled_stat_df = stat_df.style.apply(lambda x: style_stats_dataframe(stat_df, pos_group), axis=None).format("{:.2f}")
             
             dynamic_height = int((len(metrics) + 1) * 36)
-            
             st.dataframe(styled_stat_df, use_container_width=True, height=dynamic_height)
 
     else:

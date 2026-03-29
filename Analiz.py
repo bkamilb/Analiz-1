@@ -4,7 +4,6 @@ import numpy as np
 import plotly.graph_objects as go
 
 # --- 1. VERİ SETİ VE KONFİGÜRASYONLAR ---
-# FM24 stili benchmarks ve column_map (Değişmedi)
 benchmarks = {
     "GK": {
         "Goals Conceded": [1.57, 1.45, 1.31, 1.20], "xG Prevented": [-0.16, -0.12, -0.07, -0.02],
@@ -75,26 +74,22 @@ def get_norm(val, thresh, rev=False):
         if v >= e: return 100
         return 25 + (v - l) / (e - l) * 75
 
-# --- TABLO RENKLENDİRME FONKSİYONLARI ---
 def get_color_style(val, metric, pos_group):
     v = clean_val(val)
     thresh = benchmarks[pos_group].get(metric)
     if not thresh: return ""
-    
-    # Eşik değerlerin azalan mı yoksa artan mı olduğunu kontrol et
-    # Örn: Possession Lost [12.01, 8.18, 4.90, 4.05] (is_reverse = True)
     is_reverse = thresh[0] > thresh[-1] 
     
     if is_reverse:
-        if v <= thresh[3]: return "background-color: #00008B; color: white; font-weight: bold;" # Elit
-        if v <= thresh[2]: return "background-color: #006400; color: white; font-weight: bold;" # İyi
-        if v <= thresh[1]: return "background-color: #B8860B; color: white; font-weight: bold;" # Ortalama
-        return "background-color: #8B0000; color: white; font-weight: bold;" # Zayıf
+        if v <= thresh[3]: return "background-color: #00008B; color: white; font-weight: bold;" 
+        if v <= thresh[2]: return "background-color: #006400; color: white; font-weight: bold;" 
+        if v <= thresh[1]: return "background-color: #B8860B; color: white; font-weight: bold;" 
+        return "background-color: #8B0000; color: white; font-weight: bold;" 
     else:
-        if v >= thresh[3]: return "background-color: #00008B; color: white; font-weight: bold;" # Elit
-        if v >= thresh[2]: return "background-color: #006400; color: white; font-weight: bold;" # İyi
-        if v >= thresh[1]: return "background-color: #B8860B; color: white; font-weight: bold;" # Ortalama
-        return "background-color: #8B0000; color: white; font-weight: bold;" # Zayıf
+        if v >= thresh[3]: return "background-color: #00008B; color: white; font-weight: bold;" 
+        if v >= thresh[2]: return "background-color: #006400; color: white; font-weight: bold;" 
+        if v >= thresh[1]: return "background-color: #B8860B; color: white; font-weight: bold;" 
+        return "background-color: #8B0000; color: white; font-weight: bold;" 
 
 def style_stats_dataframe(df_to_style, pos_group):
     styles = pd.DataFrame('', index=df_to_style.index, columns=df_to_style.columns)
@@ -103,20 +98,24 @@ def style_stats_dataframe(df_to_style, pos_group):
             styles.at[metric, player] = get_color_style(df_to_style.at[metric, player], metric, pos_group)
     return styles
 
-# --- 2. PLOTLY İNTERAKTİF RADAR TASARIMI (MODERN VE FM24 SİTİLİ) ---
+# --- 2. PLOTLY İNTERAKTİF RADAR TASARIMI (MODERN VE BÜYÜK) ---
 def draw_radar_pro(players_data, metrics, pos_group):
     fig = go.Figure()
     
-    # Plotly'de poligonun kapanması için ilk öğeyi sona eklememiz gerekir.
-    theta_labels = [f"{m}<br>({benchmarks[pos_group][m][3]})" for m in metrics]
+    # Kelimeleri alt alta yazdırarak yanlardan taşmayı engelliyoruz
+    def format_label(m_name, m_val):
+        broken_name = m_name.replace(" ", "<br>")
+        return f"{broken_name}<br><span style='color:#a0a0a0'>({m_val})</span>"
+
+    theta_labels = [format_label(m, benchmarks[pos_group][m][3]) for m in metrics]
     theta_ext = theta_labels + [theta_labels[0]]
     
-    # FM24 Stili Arka Plan Renk Halkaları (Neon Transparan)
+    # FM24 Stili Arka Plan Renk Halkaları
     bg_levels = [
-        (100, "rgba(0, 0, 139, 0.25)", "Elit Bölge"),     # Mavi
-        (75, "rgba(0, 100, 0, 0.3)", "İyi Bölge"),        # Yeşil
-        (50, "rgba(184, 134, 11, 0.35)", "Ortalama"),     # Hardal
-        (25, "rgba(139, 0, 0, 0.4)", "Zayıf Bölge")       # Kırmızı
+        (100, "rgba(0, 0, 139, 0.2)", "Elit"),     
+        (75, "rgba(0, 100, 0, 0.25)", "İyi"),        
+        (50, "rgba(184, 134, 11, 0.3)", "Ortalama"),     
+        (25, "rgba(139, 0, 0, 0.35)", "Zayıf")       
     ]
     
     for val, color, name in bg_levels:
@@ -125,13 +124,12 @@ def draw_radar_pro(players_data, metrics, pos_group):
             theta=theta_ext,
             fill='toself',
             fillcolor=color,
-            line=dict(color='rgba(255,255,255,0)'), # Çizgisiz
+            line=dict(color='rgba(255,255,255,0)'), 
             name=name,
             hoverinfo='skip',
             showlegend=False
         ))
 
-    # Geniş renk havuzu (30 oyuncuya kadar belirgin kalır)
     line_colors = [
         "#00FFFF", "#FF00FF", "#ADFF2F", "#FFA500", "#FFD700", 
         "#00FA9A", "#1E90FF", "#FF69B4", "#CD5C5C", "#8A2BE2",
@@ -146,49 +144,47 @@ def draw_radar_pro(players_data, metrics, pos_group):
             r=r_vals,
             theta=theta_ext,
             fill='none', 
-            line=dict(color=color, width=3),
-            marker=dict(color=color, size=7, line=dict(color='white', width=1)),
+            line=dict(color=color, width=3.5), # Çizgiler kalınlaştırıldı
+            marker=dict(color=color, size=8, line=dict(color='white', width=1)),
             name=name,
-            # FM stili interaktif hover bilgisi
-            hovertemplate="<b>%{theta}</b><br>Normalleştirilmiş Skor: %{r:.1f}<extra></extra>"
+            hovertemplate="<b>%{theta}</b><br>Skor: %{r:.1f}<extra></extra>"
         ))
 
-    # FM Stili Koyu Tema ve Neon Aksanlar
     fig.update_layout(
+        height=700, # Grafiği devasa yaptık
         polar=dict(
             bgcolor='#0E1117',
             radialaxis=dict(
                 visible=True,
                 range=[0, 100],
-                showticklabels=False, # Sayısal değerleri gizledik ki sade dursun
-                gridcolor='rgba(255, 255, 255, 0.2)',
+                showticklabels=False, 
+                gridcolor='rgba(255, 255, 255, 0.15)',
                 gridwidth=1
             ),
             angularaxis=dict(
-                gridcolor='rgba(255, 255, 255, 0.2)',
-                linecolor='rgba(255, 255, 255, 0.2)',
-                tickfont=dict(size=12, color="#E0E0E0", family="Arial")
+                gridcolor='rgba(255, 255, 255, 0.15)',
+                linecolor='rgba(255, 255, 255, 0.15)',
+                tickfont=dict(size=11, color="#E0E0E0", family="Arial")
             )
         ),
         paper_bgcolor='#0E1117',
         plot_bgcolor='#0E1117',
-        margin=dict(l=60, r=60, t=60, b=60),
+        margin=dict(l=80, r=80, t=50, b=100), # Kenar boşlukları ayarlandı, kesilme engellendi
         legend=dict(
             orientation="h",
-            yanchor="bottom",
-            y=1.05,
+            yanchor="top",
+            y=-0.15, # Lejant grafiği ezmesin diye aşağı alındı
             xanchor="center",
             x=0.5,
-            font=dict(color="white", size=11),
+            font=dict(color="white", size=12),
             bgcolor="rgba(0,0,0,0)"
         )
     )
     return fig
 
-# --- 3. STREAMLIT UI (DEĞİŞMEDİ) ---
+# --- 3. STREAMLIT UI ---
 st.set_page_config(layout="wide", page_title="FM26 Scout Pro")
 
-# FM stili Kutu CSS'i
 st.markdown("""
     <style>
     .level-box { padding: 8px; border-radius: 4px; margin-bottom: 4px; font-weight: bold; text-align: center; font-size: 0.9em; }
@@ -203,7 +199,6 @@ file = st.file_uploader("FM Veri Dosyasını Yükle (CSV)", type="csv")
 if file:
     df = pd.read_csv(file, sep=";")
     
-    # KONTROL PANELİ
     st.sidebar.subheader("🛠️ Panel")
     pos_group = st.sidebar.selectbox("Pozisyon Seçimi", ["DEF", "MID", "FWD", "GK"])
     selected_players = st.sidebar.multiselect("Oyuncuları Kıyasla", df["Player"].unique(), max_selections=30)
@@ -219,9 +214,10 @@ if file:
     if selected_players:
         num_players = len(selected_players)
         
-        # Sınırlandırılmış dinamik sütun oranları (Negatif değer veya layout bozulmasını engeller)
-        plot_weight = max(1.0, 3.0 - (num_players * 0.05)) 
-        table_weight = max(2.0, 1.0 + (num_players * 0.3)) 
+        # Grafiğin ezilmesini engellemek için oranlar dengelendi
+        # Plot her zaman en az ekranın %40'ını kaplayacak
+        plot_weight = 1.5 
+        table_weight = min(2.5, 1.0 + (num_players * 0.15)) 
         
         col_plot, col_val = st.columns([plot_weight, table_weight])
         
@@ -232,7 +228,6 @@ if file:
                 norm_vals = [get_norm(row.get(column_map[m], 0), benchmarks[pos_group][m], m in ["Goals Conceded", "Possession Lost"]) for m in metrics]
                 plot_data[p] = pd.Series(norm_vals)
             
-            # Matplotlib yerine Plotly Chart'ı render ediyoruz
             fig = draw_radar_pro(plot_data, metrics, pos_group)
             st.plotly_chart(fig, use_container_width=True)
 
@@ -246,14 +241,11 @@ if file:
                     row_dict[p] = val
                 stats_data.append(row_dict)
             
-            # DataFrame'i oluştur, metriği index yap ve stili uygula
             stat_df = pd.DataFrame(stats_data).set_index("Metrik")
             styled_stat_df = stat_df.style.apply(lambda x: style_stats_dataframe(stat_df, pos_group), axis=None).format("{:.2f}")
             
-            # (Satır sayısı + 1 başlık) * satır yüksekliği (~36px) = Kusursuz dikey yükseklik
-            dynamic_height = int((len(metrics) + 1) * 36)
-            
-            # Gelişmiş tabloyu render et
+            # Tablonun dikey scroll barlarını yok etmek için tam yükseklik
+            dynamic_height = int((len(metrics) + 1.5) * 36)
             st.dataframe(styled_stat_df, use_container_width=True, height=dynamic_height)
 
     else:
